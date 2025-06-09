@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test, console2, Vm} from "forge-std/Test.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -18,18 +18,20 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {SwapFeeEventAsserter} from "hookmate/test/utils/SwapFeeEventAsserter.sol";
 
 import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
 import {Deployers} from "./utils/Deployers.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 
-import {EtherFiStabilityHook, IPriceFeed} from "../src/EtherFiStabilityHook.sol";
+import {EtherFiStabilityHook, IPriceFeed, MIN_FEE, MAX_FEE} from "../src/EtherFiStabilityHook.sol";
 
 contract StabilityHookTest is Test, Deployers {
     using EasyPosm for IPositionManager;
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
+    using SwapFeeEventAsserter for Vm;
 
     Currency currency0;
     Currency currency1;
@@ -143,6 +145,54 @@ contract StabilityHookTest is Test, Deployers {
                 assertEq(int256(result.amount0()), amountSpecified);
                 assertLt(int256(result.amount1()), amountSpecified);
             }
+        }
+    }
+
+    function testFuzz_SwapFee(bool zeroForOne) public {
+        vm.recordLogs();
+        BalanceDelta ref = swapRouter.swap{value: 0.1e18}(
+            -int256(0.1e18),
+            0, // No limit on the output amount
+            zeroForOne,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+        Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
+        vm.assertSwapFee(recordedLogs, MIN_FEE);
+
+        // move the pool price to off peg
+        swapRouter.swap{value: 1000e18}(
+            -int256(1000e18),
+            0, // Don't care.
+            zeroForOne,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+
+        // move the pool price away from peg
+        vm.recordLogs();
+        BalanceDelta highFeeSwap = swapRouter.swap{value: 0.1e18}(
+            -int256(0.1e18),
+            0, // No limit on the output amount
+            zeroForOne,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+        recordedLogs = vm.getRecordedLogs();
+        vm.assertSwapFee(recordedLogs, zeroForOne ? MIN_FEE : MAX_FEE);
+
+        // Output of the second swap is much less
+        // highFeeSwap + offset < ref
+        if (zeroForOne) {
+            assertLt(highFeeSwap.amount1() + int128(0.001e18), ref.amount1());
+        } else {
+            assertLt(highFeeSwap.amount0() + int128(0.001e18), ref.amount0());
         }
     }
 

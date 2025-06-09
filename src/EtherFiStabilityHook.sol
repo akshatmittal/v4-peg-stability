@@ -14,6 +14,10 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SqrtPriceLibrary} from "./libraries/SqrtPriceLibrary.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 
+// Fee is tracked as pips, i.e. 3000 = 0.3%
+uint24 constant MIN_FEE = 100; // Min fee; 0.01%
+uint24 constant MAX_FEE = 1_0000; // Max fee: 1%
+
 /// @title EtherFi Stability Hook
 /// @notice Peg Stability Hook for EtherFi ETH/weETH pool.
 contract EtherFiStabilityHook is BaseOverrideFee {
@@ -22,10 +26,6 @@ contract EtherFiStabilityHook is BaseOverrideFee {
 
     IPriceFeed public immutable priceFeed; // Price feed for the peg, i.e. Chainlink or Redstone
     address public immutable targetToken; // Target token for the peg, i.e. weETH
-
-    // Fee is tracked as pips, i.e. 3000 = 0.3%
-    uint24 private constant MIN_FEE = 100; // Min fee; 0.01%
-    uint24 private constant MAX_FEE = 1_0000; // Max fee: 1%
 
     // Errors
     error PegStabilityHook__InvalidSetup();
