@@ -24,7 +24,7 @@ import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
 import {Deployers} from "./utils/Deployers.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 
-import {EtherFiStabilityHook, IPriceFeed, MIN_FEE, MAX_FEE} from "../src/EtherFiStabilityHook.sol";
+import {PegStabilityHook, IPriceFeed, MIN_FEE, MAX_FEE} from "../src/PegStabilityHook.sol";
 
 contract StabilityHookTest is Test, Deployers {
     using EasyPosm for IPositionManager;
@@ -38,7 +38,7 @@ contract StabilityHookTest is Test, Deployers {
 
     PoolKey poolKey;
 
-    EtherFiStabilityHook hook;
+    PegStabilityHook hook;
     IPriceFeed priceFeed;
 
     uint256 tokenId;
@@ -69,8 +69,8 @@ contract StabilityHookTest is Test, Deployers {
             uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_INITIALIZE_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
         bytes memory constructorArgs = abi.encode(poolManager, priceFeed, Currency.unwrap(currency1), 1 days);
-        deployCodeTo("EtherFiStabilityHook.sol:EtherFiStabilityHook", constructorArgs, flags);
-        hook = EtherFiStabilityHook(flags);
+        deployCodeTo("PegStabilityHook.sol:PegStabilityHook", constructorArgs, flags);
+        hook = PegStabilityHook(flags);
 
         // Create the pool
         poolKey = PoolKey(currency0, currency1, LPFeeLibrary.DYNAMIC_FEE_FLAG, 60, IHooks(hook));
@@ -111,10 +111,6 @@ contract StabilityHookTest is Test, Deployers {
 
         vm.deal(address(this), 10_000e18); // Ensure we have enough ETH to swap
         deal(Currency.unwrap(currency1), address(this), 10_000e18); // Ensure we have enough weETH to swap
-    }
-
-    function testCounterHooks() public {
-        assertEq(uint256(1), uint256(1));
     }
 
     function testFuzz_Swap(bool zeroForOne, bool exactIn) public {

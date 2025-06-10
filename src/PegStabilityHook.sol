@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.26;
 
 import {BaseOverrideFee} from "@openzeppelin/uniswap-hooks/src/fee/BaseOverrideFee.sol";
 
@@ -18,16 +18,16 @@ import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 uint24 constant MIN_FEE = 100; // Min fee; 0.01%
 uint24 constant MAX_FEE = 1_0000; // Max fee: 1%
 
-/// @title EtherFi Stability Hook
-/// @notice Peg Stability Hook for EtherFi ETH/weETH pool.
-contract EtherFiStabilityHook is BaseOverrideFee {
+/// @title Peg Stability Hook
+/// @notice Peg Stability Hook for pools pairing ETH and ETH derivatives.
+contract PegStabilityHook is BaseOverrideFee {
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
 
-    IPriceFeed public immutable priceFeed; // Price feed for the peg, i.e. Chainlink or Redstone
+    IPriceFeed public immutable priceFeed; // Price feed for the peg, Chainlink or RedStone
     uint256 public immutable staleDuration; // Duration after which the price feed is considered stale
 
-    address public immutable targetToken; // Target token for the peg, i.e. weETH
+    address public immutable targetToken; // Target token for the peg, i.e. weETH/wstETH/ezETH
 
     // Errors
     error PegStabilityHook__InvalidSetup();
@@ -48,7 +48,7 @@ contract EtherFiStabilityHook is BaseOverrideFee {
 
     /**
      * @dev Validate pool initialization
-     * @dev Check that pair is ETH/weETH
+     * @dev Check that pair is as initialized
      */
     function _afterInitialize(
         address,
