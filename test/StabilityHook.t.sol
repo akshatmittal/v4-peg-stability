@@ -45,6 +45,8 @@ contract StabilityHookTest is Test, Deployers {
     int24 tickLower;
     int24 tickUpper;
 
+    uint160 initialPrice;
+
     function setUp() public {
         vm.createSelectFork("unichain", 18624000);
 
@@ -57,7 +59,7 @@ contract StabilityHookTest is Test, Deployers {
         priceFeed = IPriceFeed(0xBf3bA2b090188B40eF83145Be0e9F30C6ca63689); // RedStone price feed for weETH
 
         (, int256 answer,, uint256 updatedAt,) = priceFeed.latestRoundData();
-        uint160 initialPrice = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * 1e10);
+        initialPrice = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * 1e10);
 
         console2.log("weETH price:", answer);
         console2.log("weETH updated at:", updatedAt);
@@ -148,7 +150,7 @@ contract StabilityHookTest is Test, Deployers {
         }
     }
 
-    function testFuzz_SwapFee(bool zeroForOne) public {
+    function testFuzz_SwapFee_HighFee(bool zeroForOne) public {
         vm.recordLogs();
         BalanceDelta ref = swapRouter.swap{value: 0.1e18}(
             -int256(0.1e18),
@@ -188,12 +190,102 @@ contract StabilityHookTest is Test, Deployers {
         vm.assertSwapFee(recordedLogs, zeroForOne ? MIN_FEE : MAX_FEE);
 
         // Output of the second swap is much less
-        // highFeeSwap + offset < ref
         if (zeroForOne) {
             assertLt(highFeeSwap.amount1() + int128(0.001e18), ref.amount1());
         } else {
             assertLt(highFeeSwap.amount0() + int128(0.001e18), ref.amount0());
         }
+    }
+
+    function testFuzz_SwapFee_LowFee(bool zeroForOne) public {
+        // move the pool price to off peg
+        swapRouter.swap{value: 1000e18}(
+            -int256(1000e18),
+            0, // Don't care.
+            !zeroForOne,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+
+        // move the pool price away from peg
+        vm.recordLogs();
+        BalanceDelta highFeeSwap = swapRouter.swap{value: 0.1e18}(
+            -int256(0.1e18),
+            0, // No limit on the output amount
+            !zeroForOne,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+        Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
+        uint24 higherFee = SwapFeeEventAsserter.getSwapFeeFromEvent(recordedLogs);
+
+        // swap towards the peg
+        vm.recordLogs();
+        BalanceDelta lowFeeSwap = swapRouter.swap{value: 0.1e18}(
+            -int256(0.1e18),
+            0, // No limit on the output amount
+            zeroForOne,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+        recordedLogs = vm.getRecordedLogs();
+        uint24 lowerFee = SwapFeeEventAsserter.getSwapFeeFromEvent(recordedLogs);
+
+        if (zeroForOne) {
+            assertGt(higherFee, lowerFee);
+            assertEq(lowerFee, MIN_FEE); // minFee
+        } else {
+            assertEq(lowerFee, MIN_FEE); // minFee
+            assertEq(higherFee, MIN_FEE); // minFee
+        }
+
+        // Output of the second swap is much higher
+        if (zeroForOne) {
+            assertGt(lowFeeSwap.amount1(), highFeeSwap.amount1());
+        } else {
+            assertGt(lowFeeSwap.amount0(), highFeeSwap.amount0());
+        }
+    }
+
+    function testFuzz_Swap_LinearFee(uint256 amount) public {
+        // Approximately where the fee is within range.
+        vm.assume(0.5e18 < amount && amount <= 40e18);
+
+        swapRouter.swap{value: amount}(
+            -int256(amount),
+            0, // No limit on the output amount
+            false,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+
+        (uint160 poolSqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
+        uint256 absPercentageDiffWad =
+            SqrtPriceLibrary.absPercentageDifferenceWad(uint160(poolSqrtPriceX96), initialPrice);
+        uint24 expectedFee = uint24(absPercentageDiffWad / 1e12);
+
+        // move the pool price away from peg
+        vm.recordLogs();
+        swapRouter.swap{value: 0.1e18}(
+            -int256(0.1e18),
+            0, // No limit on the output amount
+            false,
+            poolKey,
+            Constants.ZERO_BYTES,
+            address(this),
+            block.timestamp + 3600
+        );
+        Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
+        uint24 swapFee = SwapFeeEventAsserter.getSwapFeeFromEvent(recordedLogs);
+        assertEq(swapFee, expectedFee);
     }
 
     receive() external payable {}
