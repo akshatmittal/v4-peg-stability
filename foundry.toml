@@ -7,6 +7,9 @@ out = "out"
 solc_version = "0.8.28"
 src = "src"
 
-# See more config options https://github.com/foundry-rs/foundry/tree/master/config
 [rpc_endpoints]
 unichain = "https://unichain.gateway.tenderly.co"
+
+[fmt]
+line_width = 100
+multiline_func_header = "params_first"

@@ -25,29 +25,37 @@ contract EtherFiStabilityHook is BaseOverrideFee {
     using StateLibrary for IPoolManager;
 
     IPriceFeed public immutable priceFeed; // Price feed for the peg, i.e. Chainlink or Redstone
+    uint256 public immutable staleDuration; // Duration after which the price feed is considered stale
+
     address public immutable targetToken; // Target token for the peg, i.e. weETH
 
     // Errors
     error PegStabilityHook__InvalidSetup();
     error PegStabilityHook__InvalidInitialize();
 
-    constructor(IPoolManager _poolManager, IPriceFeed _priceFeed, address _targetToken) BaseOverrideFee(_poolManager) {
+    constructor(
+        IPoolManager _poolManager,
+        IPriceFeed _priceFeed,
+        address _targetToken,
+        uint256 _staleDuration
+    ) BaseOverrideFee(_poolManager) {
         require(address(_priceFeed) != address(0) && _targetToken != address(0), PegStabilityHook__InvalidSetup());
 
         priceFeed = _priceFeed;
         targetToken = _targetToken;
+        staleDuration = _staleDuration;
     }
 
     /**
      * @dev Validate pool initialization
      * @dev Check that pair is ETH/weETH
      */
-    function _afterInitialize(address, PoolKey calldata key, uint160, int24)
-        internal
-        virtual
-        override
-        returns (bytes4)
-    {
+    function _afterInitialize(
+        address,
+        PoolKey calldata key,
+        uint160,
+        int24
+    ) internal virtual override returns (bytes4) {
         require(key.fee.isDynamicFee(), PegStabilityHook__InvalidInitialize());
         require(
             key.currency0 == Currency.wrap(address(0)) && key.currency1 == Currency.wrap(targetToken),
@@ -57,12 +65,12 @@ contract EtherFiStabilityHook is BaseOverrideFee {
         return this.afterInitialize.selector;
     }
 
-    function _getFee(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
-        internal
-        virtual
-        override
-        returns (uint24)
-    {
+    function _getFee(
+        address,
+        PoolKey calldata key,
+        SwapParams calldata params,
+        bytes calldata
+    ) internal virtual override returns (uint24) {
         // Trading towards the target token. (buying weETH with ETH)
         if (params.zeroForOne) {
             return MIN_FEE;
@@ -70,7 +78,10 @@ contract EtherFiStabilityHook is BaseOverrideFee {
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
         (, int256 answer,, uint256 updatedAt,) = priceFeed.latestRoundData();
-        // TODO: Handle stale price feed data
+
+        if (updatedAt + staleDuration < block.timestamp) {
+            return (MIN_FEE + MAX_FEE) / 2; // Use average fee if price feed is stale
+        }
 
         uint160 referencePriceX96 = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * 1e10);
 

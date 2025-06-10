@@ -192,11 +192,10 @@ library EasyPosm {
         );
     }
 
-    function getCurrencies(IPositionManager posm, uint256 tokenId)
-        internal
-        view
-        returns (Currency currency0, Currency currency1)
-    {
+    function getCurrencies(
+        IPositionManager posm,
+        uint256 tokenId
+    ) internal view returns (Currency currency0, Currency currency1) {
         (PoolKey memory key,) = posm.getPoolAndPositionInfo(tokenId);
         return (key.currency0, key.currency1);
     }

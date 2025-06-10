@@ -11,16 +11,17 @@ library SqrtPriceLibrary {
     /// @dev The exchange rate is in WAD format, e.g. 1e18 tokens exchange for 1.04e18 ETH
     /// @param exchangeRateWad The exchange rate in WAD format
     /// @return sqrtPriceX96 The sqrt price in sqrtX96 format
-    function exchangeRateToSqrtPriceX96(uint256 exchangeRateWad) internal pure returns (uint160 sqrtPriceX96) {
+    function exchangeRateToSqrtPriceX96(
+        uint256 exchangeRateWad
+    ) internal pure returns (uint160 sqrtPriceX96) {
         return fractionToSqrtPriceX96(1e18, exchangeRateWad);
     }
 
     /// @notice returns sqrt(numerator / denominator) * Q96
-    function fractionToSqrtPriceX96(uint256 numerator, uint256 denominator)
-        internal
-        pure
-        returns (uint160 sqrtPriceX96)
-    {
+    function fractionToSqrtPriceX96(
+        uint256 numerator,
+        uint256 denominator
+    ) internal pure returns (uint160 sqrtPriceX96) {
         // sqrtPriceX96 = sqrt(numerator / denominator) * Q96)
         // sqrtPriceX96 = sqrt(numerator) * 2^96 / sqrt(denominator)
         return uint160(FixedPointMathLib.sqrt(numerator) * Q96 / FixedPointMathLib.sqrt(denominator));

@@ -68,7 +68,7 @@ contract StabilityHookTest is Test, Deployers {
         address flags = address(
             uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_INITIALIZE_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
-        bytes memory constructorArgs = abi.encode(poolManager, priceFeed, Currency.unwrap(currency1)); // Add all the necessary constructor arguments from the hook
+        bytes memory constructorArgs = abi.encode(poolManager, priceFeed, Currency.unwrap(currency1), 1 days);
         deployCodeTo("EtherFiStabilityHook.sol:EtherFiStabilityHook", constructorArgs, flags);
         hook = EtherFiStabilityHook(flags);
 
@@ -150,7 +150,9 @@ contract StabilityHookTest is Test, Deployers {
         }
     }
 
-    function testFuzz_SwapFee_HighFee(bool zeroForOne) public {
+    function testFuzz_SwapFee_HighFee(
+        bool zeroForOne
+    ) public {
         vm.recordLogs();
         BalanceDelta ref = swapRouter.swap{value: 0.1e18}(
             -int256(0.1e18),
@@ -197,7 +199,9 @@ contract StabilityHookTest is Test, Deployers {
         }
     }
 
-    function testFuzz_SwapFee_LowFee(bool zeroForOne) public {
+    function testFuzz_SwapFee_LowFee(
+        bool zeroForOne
+    ) public {
         // move the pool price to off peg
         swapRouter.swap{value: 1000e18}(
             -int256(1000e18),
@@ -253,7 +257,9 @@ contract StabilityHookTest is Test, Deployers {
         }
     }
 
-    function testFuzz_Swap_LinearFee(uint256 amount) public {
+    function testFuzz_Swap_LinearFee(
+        uint256 amount
+    ) public {
         // Approximately where the fee is within range.
         vm.assume(0.5e18 < amount && amount <= 40e18);
 
