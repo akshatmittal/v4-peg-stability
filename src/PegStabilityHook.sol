@@ -17,6 +17,7 @@ import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 // Fee is tracked as pips, i.e. 3000 = 0.3%
 uint24 constant MIN_FEE = 100; // Min fee; 0.01%
 uint24 constant MAX_FEE = 1_0000; // Max fee: 1%
+uint24 constant STALE_FEE = 500; // Stale fee: 0.05%
 
 /// @title Peg Stability Hook
 /// @notice Peg Stability Hook for pools pairing ETH and ETH derivatives.
@@ -80,7 +81,7 @@ contract PegStabilityHook is BaseOverrideFee {
         (, int256 answer,, uint256 updatedAt,) = priceFeed.latestRoundData();
 
         if (updatedAt + staleDuration < block.timestamp) {
-            return (MIN_FEE + MAX_FEE) / 2; // Use average fee if price feed is stale
+            return STALE_FEE;
         }
 
         uint160 referencePriceX96 = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * 1e10);
