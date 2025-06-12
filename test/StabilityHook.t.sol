@@ -68,7 +68,15 @@ contract StabilityHookTest is Test, Deployers {
         address flags = address(
             uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_INITIALIZE_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
-        bytes memory constructorArgs = abi.encode(poolManager, priceFeed, Currency.unwrap(currency1), 1 days);
+        bytes memory constructorArgs = abi.encode(
+            poolManager,
+            Currency.unwrap(currency1),
+            PegStabilityHook.PriceFeedDetails({
+                priceFeed: priceFeed,
+                staleDuration: 1 days, // 1 day
+                priceFactor: 1e10 // RedStone price feed returns 1e8, so we multiply by 1e10 to get 1e18
+            })
+        );
         deployCodeTo("PegStabilityHook.sol:PegStabilityHook", constructorArgs, flags);
         hook = PegStabilityHook(flags);
 

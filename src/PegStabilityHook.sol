@@ -25,26 +25,32 @@ contract PegStabilityHook is BaseOverrideFee {
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
 
-    IPriceFeed public immutable priceFeed; // Price feed for the peg, Chainlink or RedStone
-    uint256 public immutable staleDuration; // Duration after which the price feed is considered stale
+    struct PriceFeedDetails {
+        IPriceFeed priceFeed; // Price feed for the peg, Chainlink or RedStone
+        uint256 staleDuration; // Duration after which the price feed is considered stale
+        uint256 priceFactor; // Multiplier to convert feed data to pool price format
+    }
+
+    PriceFeedDetails public priceFeedData; // Price feed details for the peg
 
     address public immutable targetToken; // Target token for the peg, i.e. weETH/wstETH/ezETH
 
     // Errors
-    error PegStabilityHook__InvalidSetup();
+    error PegStabilityHook__InvalidSetup(uint256 code);
     error PegStabilityHook__InvalidInitialize();
 
     constructor(
         IPoolManager _poolManager,
-        IPriceFeed _priceFeed,
         address _targetToken,
-        uint256 _staleDuration
+        PriceFeedDetails memory _priceFeedData
     ) BaseOverrideFee(_poolManager) {
-        require(address(_priceFeed) != address(0) && _targetToken != address(0), PegStabilityHook__InvalidSetup());
+        require(address(_targetToken) != address(0), PegStabilityHook__InvalidSetup(0));
+        require(address(_priceFeedData.priceFeed) != address(0), PegStabilityHook__InvalidSetup(1));
+        require(_priceFeedData.staleDuration != 0, PegStabilityHook__InvalidSetup(2));
+        require(_priceFeedData.priceFactor != 0, PegStabilityHook__InvalidSetup(3));
 
-        priceFeed = _priceFeed;
         targetToken = _targetToken;
-        staleDuration = _staleDuration;
+        priceFeedData = _priceFeedData;
     }
 
     /**
@@ -78,13 +84,14 @@ contract PegStabilityHook is BaseOverrideFee {
         }
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
-        (, int256 answer,, uint256 updatedAt,) = priceFeed.latestRoundData();
+        (, int256 answer,, uint256 updatedAt,) = priceFeedData.priceFeed.latestRoundData();
 
-        if (updatedAt + staleDuration < block.timestamp) {
+        if (updatedAt + priceFeedData.staleDuration < block.timestamp) {
             return STALE_FEE;
         }
 
-        uint160 referencePriceX96 = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * 1e10);
+        uint160 referencePriceX96 =
+            SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * priceFeedData.priceFactor);
 
         // Price is less than the reference price. Incentivize trading.
         if (sqrtPriceX96 < referencePriceX96) {

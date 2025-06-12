@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 // Price Feed interface compatible with Chainlink and RedStone oracles.
 interface IPriceFeed {
+    function decimals() external view returns (uint8);
+
     function latestRoundData()
         external
         view
