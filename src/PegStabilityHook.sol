@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {BaseOverrideFee} from "@openzeppelin/uniswap-hooks/src/fee/BaseOverrideFee.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IPoolManager, SwapParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -14,14 +15,9 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SqrtPriceLibrary} from "./libraries/SqrtPriceLibrary.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 
-// Fee is tracked as pips, i.e. 3000 = 0.3%
-uint24 constant MIN_FEE = 100; // Min fee; 0.01%
-uint24 constant MAX_FEE = 1_0000; // Max fee: 1%
-uint24 constant STALE_FEE = 500; // Stale fee: 0.05%
-
 /// @title Peg Stability Hook
 /// @notice Peg Stability Hook for pools pairing ETH and ETH derivatives.
-contract PegStabilityHook is BaseOverrideFee {
+contract PegStabilityHook is BaseOverrideFee, Ownable {
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
 
@@ -31,7 +27,14 @@ contract PegStabilityHook is BaseOverrideFee {
         uint256 priceFactor; // Multiplier to convert feed data to pool price format
     }
 
+    struct FeeDetails {
+        uint24 minFee; // Minimum fee for the peg stability hook
+        uint24 maxFee; // Maximum fee for the peg stability hook
+        uint24 defaultFee; // Fee applied when the price feed is stale
+    }
+
     PriceFeedDetails public priceFeedData; // Price feed details for the peg
+    FeeDetails public feeData;
 
     address public immutable targetToken; // Target token for the peg, i.e. weETH/wstETH/ezETH
 
@@ -42,8 +45,9 @@ contract PegStabilityHook is BaseOverrideFee {
     constructor(
         IPoolManager _poolManager,
         address _targetToken,
-        PriceFeedDetails memory _priceFeedData
-    ) BaseOverrideFee(_poolManager) {
+        PriceFeedDetails memory _priceFeedData,
+        FeeDetails memory _feeData
+    ) BaseOverrideFee(_poolManager) Ownable(msg.sender) {
         require(address(_targetToken) != address(0), PegStabilityHook__InvalidSetup(0));
         require(address(_priceFeedData.priceFeed) != address(0), PegStabilityHook__InvalidSetup(1));
         require(_priceFeedData.staleDuration != 0, PegStabilityHook__InvalidSetup(2));
@@ -51,6 +55,18 @@ contract PegStabilityHook is BaseOverrideFee {
 
         targetToken = _targetToken;
         priceFeedData = _priceFeedData;
+
+        setFeeData(_feeData);
+    }
+
+    function setFeeData(
+        FeeDetails memory _feeData
+    ) public onlyOwner {
+        require(_feeData.minFee <= _feeData.maxFee, PegStabilityHook__InvalidSetup(4));
+        require(_feeData.defaultFee <= _feeData.maxFee, PegStabilityHook__InvalidSetup(5));
+        require(_feeData.maxFee <= 1_0000, PegStabilityHook__InvalidSetup(6)); // Max fee is 1%
+
+        feeData = _feeData;
     }
 
     /**
@@ -80,14 +96,14 @@ contract PegStabilityHook is BaseOverrideFee {
     ) internal virtual override returns (uint24) {
         // Trading towards the target token. (buying weETH with ETH)
         if (params.zeroForOne) {
-            return MIN_FEE;
+            return feeData.minFee;
         }
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
         (, int256 answer,, uint256 updatedAt,) = priceFeedData.priceFeed.latestRoundData();
 
         if (updatedAt + priceFeedData.staleDuration < block.timestamp) {
-            return STALE_FEE;
+            return feeData.defaultFee;
         }
 
         uint160 referencePriceX96 =
@@ -95,21 +111,20 @@ contract PegStabilityHook is BaseOverrideFee {
 
         // Price is less than the reference price. Incentivize trading.
         if (sqrtPriceX96 < referencePriceX96) {
-            return MIN_FEE;
+            return feeData.minFee;
         }
 
         // Percentage difference between the pool price and the reference price
-        uint256 absPercentageDiff =
-            SqrtPriceLibrary.absPercentageDifferenceWad(uint160(sqrtPriceX96), referencePriceX96);
+        uint256 absPercentageDiff = SqrtPriceLibrary.absPercentageDifferenceWad(sqrtPriceX96, referencePriceX96);
 
         // 1e18 precision to pips
         uint24 fee = uint24(absPercentageDiff / 1e12);
 
-        if (fee < MIN_FEE) {
-            fee = MIN_FEE;
+        if (fee < feeData.minFee) {
+            return feeData.minFee;
         }
-        if (fee > MAX_FEE) {
-            fee = MAX_FEE;
+        if (fee > feeData.maxFee) {
+            return feeData.maxFee;
         }
 
         return fee;

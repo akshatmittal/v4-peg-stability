@@ -24,7 +24,7 @@ import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
 import {Deployers} from "./utils/Deployers.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 
-import {PegStabilityHook, IPriceFeed, MIN_FEE, MAX_FEE} from "../src/PegStabilityHook.sol";
+import {PegStabilityHook, IPriceFeed} from "../src/PegStabilityHook.sol";
 
 contract StabilityHookTest is Test, Deployers {
     using EasyPosm for IPositionManager;
@@ -46,6 +46,12 @@ contract StabilityHookTest is Test, Deployers {
     int24 tickUpper;
 
     uint160 initialPrice;
+
+    PegStabilityHook.FeeDetails targetFee = PegStabilityHook.FeeDetails({
+        minFee: 100, // 0.01%
+        maxFee: 1_0000, // 1%
+        defaultFee: 500 // 0.05%
+    });
 
     function setUp() public {
         vm.createSelectFork("unichain", 18624000);
@@ -75,13 +81,14 @@ contract StabilityHookTest is Test, Deployers {
                 priceFeed: priceFeed,
                 staleDuration: 1 days, // 1 day
                 priceFactor: 1e10 // RedStone price feed returns 1e8, so we multiply by 1e10 to get 1e18
-            })
+            }),
+            targetFee
         );
         deployCodeTo("PegStabilityHook.sol:PegStabilityHook", constructorArgs, flags);
         hook = PegStabilityHook(flags);
 
         // Create the pool
-        poolKey = PoolKey(currency0, currency1, LPFeeLibrary.DYNAMIC_FEE_FLAG, 60, IHooks(hook));
+        poolKey = PoolKey(currency0, currency1, LPFeeLibrary.DYNAMIC_FEE_FLAG, 1, IHooks(hook));
         poolManager.initialize(poolKey, initialPrice);
 
         // Provide full-range liquidity to the pool
@@ -168,7 +175,7 @@ contract StabilityHookTest is Test, Deployers {
             block.timestamp + 3600
         );
         Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
-        vm.assertSwapFee(recordedLogs, MIN_FEE);
+        vm.assertSwapFee(recordedLogs, targetFee.minFee);
 
         // move the pool price to off peg
         swapRouter.swap{value: 1000e18}(
@@ -193,7 +200,7 @@ contract StabilityHookTest is Test, Deployers {
             block.timestamp + 3600
         );
         recordedLogs = vm.getRecordedLogs();
-        vm.assertSwapFee(recordedLogs, zeroForOne ? MIN_FEE : MAX_FEE);
+        vm.assertSwapFee(recordedLogs, zeroForOne ? targetFee.minFee : targetFee.maxFee);
 
         // Output of the second swap is much less
         if (zeroForOne) {
@@ -247,10 +254,10 @@ contract StabilityHookTest is Test, Deployers {
 
         if (zeroForOne) {
             assertGt(higherFee, lowerFee);
-            assertEq(lowerFee, MIN_FEE); // minFee
+            assertEq(lowerFee, targetFee.minFee); // minFee
         } else {
-            assertEq(lowerFee, MIN_FEE); // minFee
-            assertEq(higherFee, MIN_FEE); // minFee
+            assertEq(lowerFee, targetFee.minFee); // minFee
+            assertEq(higherFee, targetFee.minFee); // minFee
         }
 
         // Output of the second swap is much higher
