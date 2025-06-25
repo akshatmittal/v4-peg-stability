@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.21;
 
-import {PoolKey} from "v4-core/src/types/PoolKey.sol";
-import {BalanceDelta, toBalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
-import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {PositionInfo, PositionInfoLibrary} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import { PoolKey } from "v4-core/src/types/PoolKey.sol";
+import { BalanceDelta, toBalanceDelta } from "v4-core/src/types/BalanceDelta.sol";
+import { Currency, CurrencyLibrary } from "v4-core/src/types/Currency.sol";
+import { IPositionManager } from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import { Actions } from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import { PositionInfo, PositionInfoLibrary } from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 
 /// @title Easy Position Manager
 /// @notice A library for abstracting Position Manager calldata
@@ -62,7 +62,7 @@ library EasyPosm {
         // Mint Liquidity
         tokenId = posm.nextTokenId();
         uint256 valueToPass = currency0.isAddressZero() ? amount0Max : 0;
-        posm.modifyLiquidities{value: valueToPass}(abi.encode(mintData.actions, mintData.params), deadline);
+        posm.modifyLiquidities{ value: valueToPass }(abi.encode(mintData.actions, mintData.params), deadline);
 
         delta = toBalanceDelta(
             -(mintData.balance0Before - currency0.balanceOf(address(this))).toInt128(),
@@ -90,7 +90,7 @@ library EasyPosm {
         uint256 balance1Before = currency1.balanceOf(address(this));
 
         uint256 valueToPass = currency0.isAddressZero() ? amount0Max : 0;
-        posm.modifyLiquidities{value: valueToPass}(
+        posm.modifyLiquidities{ value: valueToPass }(
             abi.encode(
                 abi.encodePacked(
                     uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY)

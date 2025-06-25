@@ -11,5 +11,6 @@ src = "src"
 unichain = "https://unichain.gateway.tenderly.co"
 
 [fmt]
-line_width = 100
+bracket_spacing = true
+line_width = 120
 multiline_func_header = "params_first"

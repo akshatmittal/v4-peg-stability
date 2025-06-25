@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import { FixedPointMathLib } from "solmate/src/utils/FixedPointMathLib.sol";
 
 library SqrtPriceLibrary {
     uint160 internal constant Q96 = 2 ** 96;
