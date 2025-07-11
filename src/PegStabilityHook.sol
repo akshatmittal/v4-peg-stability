@@ -19,10 +19,11 @@ contract PegStabilityHook is BaseOverrideFee {
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
 
+    /// @notice 0 <= minFee <= defaultFee <= maxFee <= 1_0000 (1%)
     struct FeeDetails {
         uint24 minFee; // Minimum fee for the peg stability hook
-        uint24 maxFee; // Maximum fee for the peg stability hook
         uint24 defaultFee; // Fee applied when the price feed is stale
+        uint24 maxFee; // Maximum fee for the peg stability hook
     }
 
     struct PoolData {
@@ -34,6 +35,7 @@ contract PegStabilityHook is BaseOverrideFee {
     mapping(PoolId => PoolData) public poolSettings;
 
     // Errors
+    error PegStabilityHook__NotAllowed();
     error PegStabilityHook__InvalidSetup(uint256 code);
     error PegStabilityHook__InvalidOptions(uint256 code);
 
@@ -79,11 +81,20 @@ contract PegStabilityHook is BaseOverrideFee {
         PoolData storage pool = poolSettings[poolId];
 
         require(msg.sender == pool.feeController, PegStabilityHook__InvalidOptions(1)); // Already enforces that the pool exists.
-        require(_feeData.minFee <= _feeData.maxFee, PegStabilityHook__InvalidOptions(2));
+        require(_feeData.minFee <= _feeData.defaultFee, PegStabilityHook__InvalidOptions(2));
         require(_feeData.defaultFee <= _feeData.maxFee, PegStabilityHook__InvalidOptions(3));
         require(_feeData.maxFee <= 1_0000, PegStabilityHook__InvalidOptions(4)); // Max fee is 1%
 
         pool.feeData = _feeData;
+    }
+
+    function renounceFeeController(
+        PoolId poolId
+    ) external {
+        PoolData storage pool = poolSettings[poolId];
+        require(msg.sender == pool.feeController, PegStabilityHook__NotAllowed());
+
+        pool.feeController = address(0);
     }
 
     /**
