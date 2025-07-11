@@ -1,30 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test, console2, Vm} from "forge-std/Test.sol";
-import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import { Test, console2, Vm } from "forge-std/Test.sol";
+import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
 
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {SwapFeeEventAsserter} from "hookmate/test/utils/SwapFeeEventAsserter.sol";
+import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import { PoolId, PoolIdLibrary } from "@uniswap/v4-core/src/types/PoolId.sol";
+import { CurrencyLibrary, Currency } from "@uniswap/v4-core/src/types/Currency.sol";
+import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import { StateLibrary } from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import { LiquidityAmounts } from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import { IPositionManager } from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import { Constants } from "@uniswap/v4-core/test/utils/Constants.sol";
+import { LPFeeLibrary } from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import { SwapFeeEventAsserter } from "hookmate/test/utils/SwapFeeEventAsserter.sol";
 
-import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
-import {Deployers} from "./utils/Deployers.sol";
-import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
+import { EasyPosm } from "./utils/libraries/EasyPosm.sol";
+import { Deployers } from "./utils/Deployers.sol";
+import { SqrtPriceLibrary } from "../src/libraries/SqrtPriceLibrary.sol";
 
-import {PegStabilityHook, IPriceFeed} from "../src/PegStabilityHook.sol";
+import { PegStabilityHook } from "../src/PegStabilityHook.sol";
+import { OracleAdapter } from "../src/adapters/OracleAdapter.sol";
+import { IPriceFeed } from "../src/interfaces/IPriceFeed.sol";
 
 contract StabilityHookTest is Test, Deployers {
     using EasyPosm for IPositionManager;
@@ -51,7 +53,7 @@ contract StabilityHookTest is Test, Deployers {
         minFee: 100, // 0.01%
         maxFee: 1_0000, // 1%
         defaultFee: 500 // 0.05%
-    });
+     });
 
     function setUp() public {
         vm.createSelectFork("unichain", 18624000);
@@ -64,32 +66,32 @@ contract StabilityHookTest is Test, Deployers {
 
         priceFeed = IPriceFeed(0xBf3bA2b090188B40eF83145Be0e9F30C6ca63689); // RedStone price feed for weETH
 
-        (, int256 answer,, uint256 updatedAt,) = priceFeed.latestRoundData();
-        initialPrice = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(uint256(answer) * 1e10);
+        OracleAdapter oracleAdapter = new OracleAdapter(
+            priceFeed,
+            1 days, // 1 day stale duration
+            1e10 // Price factor to convert RedStone's to Uniswap's format
+        );
 
+        (uint256 answer, bool isStale) = oracleAdapter.exchangeRate();
         console2.log("weETH price:", answer);
-        console2.log("weETH updated at:", updatedAt);
+        console2.log("weETH stale:", isStale);
 
         // Deploy the hook to an address with the correct flags
         address flags = address(
             uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_INITIALIZE_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
-        bytes memory constructorArgs = abi.encode(
-            poolManager,
-            Currency.unwrap(currency1),
-            PegStabilityHook.PriceFeedDetails({
-                priceFeed: priceFeed,
-                staleDuration: 1 days, // 1 day
-                priceFactor: 1e10 // RedStone price feed returns 1e8, so we multiply by 1e10 to get 1e18
-            }),
-            targetFee
-        );
+        bytes memory constructorArgs = abi.encode(poolManager);
         deployCodeTo("PegStabilityHook.sol:PegStabilityHook", constructorArgs, flags);
         hook = PegStabilityHook(flags);
 
         // Create the pool
-        poolKey = PoolKey(currency0, currency1, LPFeeLibrary.DYNAMIC_FEE_FLAG, 1, IHooks(hook));
-        poolManager.initialize(poolKey, initialPrice);
+        (poolKey,, initialPrice) = hook.createPoolWithAdapter(
+            Currency.unwrap(currency1),
+            1,
+            oracleAdapter,
+            targetFee,
+            address(this) // Fee controller is this contract
+        );
 
         // Provide full-range liquidity to the pool
         tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
@@ -132,7 +134,7 @@ contract StabilityHookTest is Test, Deployers {
         int256 amountSpecified = exactIn ? -int256(1e18) : int256(1e18);
         uint256 msgValue = zeroForOne ? 2e18 : 0;
 
-        BalanceDelta result = swapRouter.swap{value: msgValue}(
+        BalanceDelta result = swapRouter.swap{ value: msgValue }(
             amountSpecified,
             exactIn ? 0 : type(uint256).max, // No limit on the output amount
             zeroForOne,
@@ -165,7 +167,7 @@ contract StabilityHookTest is Test, Deployers {
         bool zeroForOne
     ) public {
         vm.recordLogs();
-        BalanceDelta ref = swapRouter.swap{value: 0.1e18}(
+        BalanceDelta ref = swapRouter.swap{ value: 0.1e18 }(
             -int256(0.1e18),
             0, // No limit on the output amount
             zeroForOne,
@@ -178,7 +180,7 @@ contract StabilityHookTest is Test, Deployers {
         vm.assertSwapFee(recordedLogs, targetFee.minFee);
 
         // move the pool price to off peg
-        swapRouter.swap{value: 1000e18}(
+        swapRouter.swap{ value: 1000e18 }(
             -int256(1000e18),
             0, // Don't care.
             zeroForOne,
@@ -190,7 +192,7 @@ contract StabilityHookTest is Test, Deployers {
 
         // move the pool price away from peg
         vm.recordLogs();
-        BalanceDelta highFeeSwap = swapRouter.swap{value: 0.1e18}(
+        BalanceDelta highFeeSwap = swapRouter.swap{ value: 0.1e18 }(
             -int256(0.1e18),
             0, // No limit on the output amount
             zeroForOne,
@@ -214,7 +216,7 @@ contract StabilityHookTest is Test, Deployers {
         bool zeroForOne
     ) public {
         // move the pool price to off peg
-        swapRouter.swap{value: 1000e18}(
+        swapRouter.swap{ value: 1000e18 }(
             -int256(1000e18),
             0, // Don't care.
             !zeroForOne,
@@ -226,7 +228,7 @@ contract StabilityHookTest is Test, Deployers {
 
         // move the pool price away from peg
         vm.recordLogs();
-        BalanceDelta highFeeSwap = swapRouter.swap{value: 0.1e18}(
+        BalanceDelta highFeeSwap = swapRouter.swap{ value: 0.1e18 }(
             -int256(0.1e18),
             0, // No limit on the output amount
             !zeroForOne,
@@ -240,7 +242,7 @@ contract StabilityHookTest is Test, Deployers {
 
         // swap towards the peg
         vm.recordLogs();
-        BalanceDelta lowFeeSwap = swapRouter.swap{value: 0.1e18}(
+        BalanceDelta lowFeeSwap = swapRouter.swap{ value: 0.1e18 }(
             -int256(0.1e18),
             0, // No limit on the output amount
             zeroForOne,
@@ -274,7 +276,7 @@ contract StabilityHookTest is Test, Deployers {
         // Approximately where the fee is within range.
         vm.assume(0.5e18 < amount && amount <= 40e18);
 
-        swapRouter.swap{value: amount}(
+        swapRouter.swap{ value: amount }(
             -int256(amount),
             0, // No limit on the output amount
             false,
@@ -291,7 +293,7 @@ contract StabilityHookTest is Test, Deployers {
 
         // move the pool price away from peg
         vm.recordLogs();
-        swapRouter.swap{value: 0.1e18}(
+        swapRouter.swap{ value: 0.1e18 }(
             -int256(0.1e18),
             0, // No limit on the output amount
             false,
@@ -305,5 +307,5 @@ contract StabilityHookTest is Test, Deployers {
         assertEq(swapFee, expectedFee);
     }
 
-    receive() external payable {}
+    receive() external payable { }
 }

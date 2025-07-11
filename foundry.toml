@@ -4,12 +4,13 @@ ffi = true
 fs_permissions = [{access = "read-write", path = ".forge-snapshots/"}]
 libs = ["lib"]
 out = "out"
-solc_version = "0.8.28"
+solc_version = "0.8.30"
 src = "src"
 
 [rpc_endpoints]
 unichain = "https://unichain.gateway.tenderly.co"
 
 [fmt]
-line_width = 100
+bracket_spacing = true
+line_width = 120
 multiline_func_header = "params_first"
